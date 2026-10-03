@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111516">
+<link rel="manifest" href="manifest.webmanifest">
+<title>شيت الطلبة</title>
+<style>
+:root{--bg:#111516;--panel:#1b2021;--panel2:#252d2e;--border:#3a4344;--text:#f4f6f6;--muted:#aeb7b7;--green:#43c095;--red:#f16b5f;--input:#121718}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Tahoma,sans-serif}
+.app{max-width:1150px;margin:auto;padding:18px 12px 40px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}
+h1{font-size:30px;margin:0;font-weight:800}.sub{color:var(--muted);font-size:13px;margin-top:4px}
+.controls{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:10px}
+button,select,input{font:inherit}button,select{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:13px;padding:11px 14px;cursor:pointer}
+button.primary{background:var(--green);border-color:var(--green);color:#07110d;font-weight:800}
+input.search{flex:1;min-width:210px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:13px;padding:11px 14px;outline:0}
+.stats{color:var(--muted);font-size:15px;margin:13px 2px}.context{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 10px}.badge{background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:7px 11px;font-size:13px}.table-wrap{overflow:auto;border:1px solid var(--border);border-radius:18px;background:var(--panel)}
+table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}th,td{border-left:1px solid var(--border);border-bottom:1px solid var(--border);padding:8px;text-align:center;white-space:nowrap}
+th{background:var(--panel2);font-size:16px;padding:12px 9px;position:sticky;top:0;z-index:2}th:last-child,td:last-child{border-left:0}
+.name-input{width:185px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:9px;outline:0;padding:9px;font-weight:700;font-size:16px}.name-input:focus{border-color:var(--green)}
+.score{width:78px;background:var(--input);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:9px;text-align:center;outline:0}
+.score:focus{border-color:var(--green)}.pay{min-width:108px;padding:9px 11px;border-radius:11px;font-weight:700;border:0;color:#fff}
+.paid{background:var(--green)}.unpaid{background:var(--red)}.del{background:transparent;border:0;color:#899;padding:7px}
+.empty{padding:28px;color:var(--muted)}.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#263031;border:1px solid var(--border);padding:10px 15px;border-radius:12px;display:none;z-index:10}
+@media(max-width:600px){.app{padding:14px 9px}h1{font-size:24px}.name-input{width:145px}.score{width:70px}th{font-size:14px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div><h1>📒 شيت الطلبة</h1><div class="sub">يعمل بدون إنترنت بعد تثبيته كتطبيق</div></div>
+  </div>
+
+  <div class="controls">
+    <select id="grade" aria-label="اختيار الصف">
+      <option value="الصف الأول">الصف الأول</option>
+      <option value="الصف الثاني">الصف الثاني</option>
+      <option value="الصف الثالث">الصف الثالث</option>
+    </select>
+    <select id="gender" aria-label="اختيار المجموعة">
+      <option value="البنين">👦 البنين</option>
+      <option value="البنات">👧 البنات</option>
+      <option value="الكل">👥 الكل</option>
+    </select>
+    <button class="primary" onclick="addStudent()">＋ طالب</button>
+    <button onclick="addExam()">＋ امتحان</button>
+  </div>
+
+  <div class="controls">
+    <input id="search" class="search" placeholder="🔎 بحث باسم الطالب" oninput="render()">
+    <select id="payFilter" onchange="render()">
+      <option value="all">كل الطلبة</option>
+      <option value="paid">دفع فقط</option>
+      <option value="unpaid">لم يدفع فقط</option>
+    </select>
+    <select id="sortBy" onchange="render()">
+      <option value="original">الترتيب الأصلي</option>
+      <option value="name">ترتيب أبجدي</option>
+      <option value="score">الأعلى درجة</option>
+    </select>
+    <select id="examSort" onchange="render()" disabled></select>
+    <button onclick="exportData()">نسخة احتياطية</button>
+    <label style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:var(--panel);border-radius:13px;padding:10px 13px;cursor:pointer">
+      استرجاع <input id="importFile" type="file" accept=".json" style="display:none" onchange="importData(event)">
+    </label>
+  </div>
+
+  <div id="context" class="context"></div>
+  <div id="stats" class="stats"></div>
+  <div class="table-wrap"><table id="table"></table></div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+const KEY="student_sheet_v4";
+const legacyData={"groups":{}};
+function blankGroup(){return {exams:1,students:[]}}
+function makeGradeData(){
+  const groups={};
+  ["الصف الأول","الصف الثاني","الصف الثالث"].forEach(g=>groups[g]={"البنين":blankGroup(),"البنات":blankGroup()});
+  groups["الصف الأول"]["البنات"]=legacyData.groups["البنات"]||blankGroup();
+  groups["الصف الأول"]["البنين"]=legacyData.groups["الأولاد"]||blankGroup();
+  return {grades:groups,currentGrade:"الصف الأول",currentGender:"البنات"};
+}
+let data=JSON.parse(localStorage.getItem(KEY)||"null")||makeGradeData();
+function migrate(d){
+  Object.values(d.grades).forEach(grade=>Object.values(grade).forEach(group=>{
+    if(d.v!==5){group.exams=1;group.students.forEach(st=>{st.scores=[st.scores?.[0]??""];});}
+    group.exams=Math.max(1,group.exams||1);
+    group.students.forEach(st=>{st.scores=Array.from({length:group.exams},(_,k)=>st.scores?.[k]??"");});
+  }));
+  d.v=5;return d;
+}
+data=migrate(data);localStorage.setItem(KEY,JSON.stringify(data));
+function save(){localStorage.setItem(KEY,JSON.stringify(data))}
+function cur(){return data.grades[data.currentGrade][data.currentGender]}
+function allStudents(){
+  const g=data.grades[data.currentGrade];
+  if(data.currentGender==="البنين") return g["البنين"].students.map((s,i)=>({s,i,gender:"البنين"}));
+  if(data.currentGender==="البنات") return g["البنات"].students.map((s,i)=>({s,i,gender:"البنات"}));
+  return [...g["البنين"].students.map((s,i)=>({s,i,gender:"البنين"})),...g["البنات"].students.map((s,i)=>({s,i,gender:"البنات"}))];
+}
+function examsCount(){return data.currentGender==="الكل"?Math.max(data.grades[data.currentGrade]["البنين"].exams,data.grades[data.currentGrade]["البنات"].exams):cur().exams}
+function toast(t){let e=document.getElementById("toast");e.textContent=t;e.style.display="block";clearTimeout(window.tt);window.tt=setTimeout(()=>e.style.display="none",1500)}
+function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll('"',"&quot;").replaceAll("<","&lt;").replaceAll(">","&gt;")}
+function renderExamSort(){
+ let s=document.getElementById("examSort"),old=s.value;s.innerHTML="";
+ for(let i=0;i<examsCount();i++){let o=document.createElement("option");o.value=i;o.textContent="امتحان "+(i+1);s.appendChild(o)}
+ if(old<examsCount())s.value=old||0;s.disabled=document.getElementById("sortBy").value!=="score";
+}
+function render(){
+ document.getElementById("grade").value=data.currentGrade;document.getElementById("gender").value=data.currentGender;renderExamSort();
+ const q=document.getElementById("search").value.trim().toLowerCase(),pf=document.getElementById("payFilter").value,sort=document.getElementById("sortBy").value,ex=+document.getElementById("examSort").value||0;
+ let list=allStudents().filter(x=>x.s.name.toLowerCase().includes(q));
+ if(pf==="paid")list=list.filter(x=>x.s.paid);if(pf==="unpaid")list=list.filter(x=>!x.s.paid);
+ if(sort==="name")list.sort((a,b)=>a.s.name.localeCompare(b.s.name,"ar"));
+ if(sort==="score"){const val=x=>{const n=parseFloat(x.s.scores[ex]);return isNaN(n)?-Infinity:n};list.sort((p,q)=>{const A=val(p),B=val(q);return A===B?0:(B>A?1:-1)})}
+ const all=allStudents(),paid=all.filter(x=>x.s.paid).length;
+ document.getElementById("context").innerHTML=`<span class="badge">📚 ${esc(data.currentGrade)}</span><span class="badge">${data.currentGender==="الكل"?"👥 الكل":data.currentGender==="البنين"?"👦 البنين":"👧 البنات"}</span>`;
+ document.getElementById("stats").textContent=`عدد الطلبة: ${all.length} • دفعوا: ${paid} • لم يدفعوا: ${all.length-paid} • المعروض: ${list.length}`;
+ let out="<thead><tr><th>الاسم</th>";if(data.currentGender==="الكل")out+="<th>المجموعة</th>";out+="<th>الدفع</th>";
+ for(let j=0;j<examsCount();j++)out+=`<th>امتحان ${j+1}</th>`;if(data.currentGender!=="الكل")out+="<th>حذف</th>";out+="</tr></thead><tbody>";
+ list.forEach(x=>{let st=x.s,i=x.i;out+=`<tr><td><input class="name-input" value="${esc(st.name)}" onchange="renameStudent('${x.gender}',${i},this.value)" ${data.currentGender==="الكل"?"disabled":""}></td>`;
+ if(data.currentGender==="الكل")out+=`<td>${x.gender==="البنين"?"👦 بنين":"👧 بنات"}</td>`;
+ out+=`<td><button class="pay ${st.paid?'paid':'unpaid'}" onclick="togglePay('${x.gender}',${i})">${st.paid?'✓ دفع':'لم يدفع'}</button></td>`;
+ for(let j=0;j<examsCount();j++)out+=`<td><input class="score" inputmode="decimal" value="${esc(st.scores[j]??'')}" onchange="setScore('${x.gender}',${i},${j},this.value)" ${data.currentGender==="الكل"?"disabled":""}></td>`;
+ if(data.currentGender!=="الكل")out+=`<td><button class="del" onclick="deleteStudent('${x.gender}',${i})">✕</button></td>`;out+="</tr>"});
+ if(!list.length)out+=`<tr><td class="empty" colspan="${examsCount()+3}">لا توجد نتائج</td></tr>`;
+ document.getElementById("table").innerHTML=out+"</tbody>";
+}
+function renameStudent(g,i,v){data.grades[data.currentGrade][g].students[i].name=v.trim();save()}
+function setScore(g,i,j,v){data.grades[data.currentGrade][g].students[i].scores[j]=v;save()}
+function togglePay(g,i){data.grades[data.currentGrade][g].students[i].paid=!data.grades[data.currentGrade][g].students[i].paid;save();render()}
+function addStudent(){const g=data.currentGender==="الكل"?"البنات":data.currentGender,m=data.grades[data.currentGrade][g];m.students.push({name:"طالب جديد",paid:false,scores:Array(m.exams).fill("")});save();render();toast("تمت إضافة طالب")}
+function deleteStudent(g,i){if(confirm("حذف الطالب؟")){data.grades[data.currentGrade][g].students.splice(i,1);save();render()}}
+function addExam(){const targets=data.currentGender==="الكل"?["البنين","البنات"]:[data.currentGender];targets.forEach(g=>{const m=data.grades[data.currentGrade][g];m.exams++;m.students.forEach(s=>s.scores.push(""))});save();render();toast("تمت إضافة امتحان")}
+document.getElementById("grade").onchange=e=>{data.currentGrade=e.target.value;save();render()};
+document.getElementById("gender").onchange=e=>{data.currentGender=e.target.value;save();render()};
+document.getElementById("sortBy").onchange=render;document.getElementById("examSort").onchange=render;
+function exportData(){let blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="نسخة_احتياطية_شيت_الطلبة.json";a.click();URL.revokeObjectURL(a.href);toast("تم إنشاء النسخة الاحتياطية")}
+function importData(ev){let f=ev.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(!x.grades||!x.currentGrade||!x.currentGender)throw 0;data=migrate(x);save();render();toast("تم استرجاع البيانات")}catch(e){alert("ملف النسخة الاحتياطية غير صالح")}};r.readAsText(f)}
+if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
+render();
+</script>
+</body>
+</html>
